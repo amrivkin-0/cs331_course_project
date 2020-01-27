@@ -42,14 +42,17 @@
 		{\leftarrow}\:}}
 \newcommand{\points}[1]{\textbf{({#1} pts)}}
 
+\newcommand{\fn}{\footnotesize}
 \newcommand{\Colon}{\ : \ }
 \newcommand{\st}{\mathsf{state}}
 \newcommand{\msgs}{\mathcal{M}}
 \newcommand{\ctxts}{\mathcal{C}}
 \newcommand{\keys}{\mathcal{K}}
+\newcommand{\rands}{\mathcal{R}}
+\newcommand{\states}{\mathcal{S}}
 \newcommand{\kg}{\mathcal{K}}
-\newcommand{\enc}{E}
-\newcommand{\dec}{E^{-1}}
+\newcommand{\Enc}{\mathsf{Enc}}
+\newcommand{\Dec}{\mathsf{Dec}}
 \newcommand{\MAC}{\mathrm{MAC}}
 \newcommand{\RMAC}{\mathrm{RMAC}}
 
@@ -223,19 +226,19 @@
 	\begin{definition}
 		Let $\keys,\msgs,\ctxts$ be non-empty sets. A function
 		\[
-		\enc : \keys\times\msgs \to \ctxts
+		\Enc : \keys\times\msgs \to \ctxts
 		\]
 		is called a \emph{cipher with key-space $\keys$, message-space
 			$\msgs$, and ciphertext-space $\ctxts$} if for every $K\in\keys$,
-		the function $\enc(K,\cdot)$ is one-to-one.
+		the function $\Enc(K,\cdot)$ is one-to-one.
 		
 		For such a cipher, we define 
 		\[
-		\dec: \keys\times\ctxts \to\msgs
+		\Dec: \keys\times\ctxts \to\msgs
 		\]
-		by letting $\dec(K,\cdot)$ be the inverse of $\enc(K,\cdot)$ for
-		each $K\in\keys$. (More precisely, $\dec(k,c)$ is only defined when
-		there exits $m\in\msgs$ such that $\enc(k,m)=c$.)
+		by letting $\Dec(K,\cdot)$ be the inverse of $\Enc(K,\cdot)$ for
+		each $K\in\keys$. (More precisely, $\Dec(k,c)$ is only defined when
+		there exits $m\in\msgs$ such that $\Enc(k,m)=c$.)
 	\end{definition}
 	
 	
@@ -254,6 +257,8 @@
 	
 	A ``secure'' block cipher is one that ``looks random'' and has a large enough key space that an adversary can't test all possible keys by brute force. Also, there needs to be a method to defend against the idea of using frequency analysis to break the repeated use of a block ciphers with the same key like with substituion ciphers.
 	
+	We formalize ``looks random'' as pseudorandom function (PRF) security. An adversary, $\calA$, is an algorithm. The adversary gets to pick a message block and then sees either the ciphertext which results from encrypting the block or the output of a pseudorandom function. A ``secure'' block cipher is one where no known adversary exists which can distinguish between encryption and a a pseudorandom function.
+	
 	\begin{definition}
 		Let $E:\bits^n\times\bits^\ell\to\bits^\ell$ and $\calA$ be an adversary.
 		Let $\bK$ be uniform on $\bits^n$, and let $\bof$ be a random function
@@ -265,8 +270,157 @@
 		\left|\Pr[\calA^{E(\bK,\cdot)}=1]-\Pr[\calA^{\bof(\cdot)}=1]\right|.
 		\]
 	\end{definition}
+
+Designing a low PRF advantage block cipher is a field in its own. For our purposes, we will assume that the block cipher AES is secure without going into the details of how it operates, treating it as a black box function.
+
+A secure block cipher isn't much use on its own. A call to AES only encrypts a 128-bit block rather than a lengthy message. Encryption schemes $\Pi = (\Enc,\Dec)$ are built on the primitives of block ciphers to encrypt messages of any length. A naive approach to building an encryption scheme would be just divide the message into blocks and call AES on each block. In practice, this is susceptible to the same types of frequency analysis that can be done with substitution ciphers -- the adversary can find damaging information because the same block encrypts to the same ciphertext.
+
+We use the formalization of Chosen Plaintext attacks (CPA) to define security for an encryption scheme. Here the adversary gets to pick two equal length messages and then sees the result after either the first or second message is encrypted. After this happens many times, the adversary guesses whether the first or second message is the one being encrypted. 
+
+\begin{definition}
+	Let $\Pi = (\Enc,\Dec)$ be a randomized encryption scheme with key-space
+	$\keys$, message-space $\msgs$, randomness-space $\rands$, and
+	ciphertext-space $\ctxts$.  We assume that the message-space $\msgs$ is a
+	set of bit strings, i.e.  $\msgs\subseteq\bits^*$.  Let $\calA$ be an
+	algorithm. Define algorithm $\ExptCPA_\Pi(\calA)$ as
+	\begin{center}
+		\begin{tabular}{c}
+			\begin{minipage}{2in}\begin{tabbing}
+					123\=123\=\kill
+					\underline{\algorithm{$\ExptCPA_\Pi(\calA)$}} \\[2pt]
+					\fn01 \> Pick $k\getsr \keys, b\getsr \bits$\\
+					\fn02 \> Run $\calA^{\LR_{k,b}(\cdot,\cdot)}$, where the oracle
+					is given below. Eventually $\calA$ halts with output $\hatb$\\
+					\fn03\> If $\hatb = b$: Output 1\\
+					\fn06 \> Else: Output 0\\
+					\\
+					\underline{Oracle $\LR_{k,b}(m_0,m_1)$} \\
+					\> If $m_0,m_1$ are not the same length: Return $\bot$\\
+					\> Pick $r \getsr \rands$\\
+					\> Compute $c \gets \Enc(k,m_b,r)$\\
+					\> Return $c$
+			\end{tabbing}\end{minipage}
+		\end{tabular}
+	\end{center}
+	Define the \emph{CPA advantage of $\calA$ against $\Pi$} as
+	\[
+	\AdvCPA{\Pi}{\calA} =
+	\left|\Pr[\ExptCPA_\Pi(\calA) = 1] - \frac{1}{2}\right|
+	\]
+\end{definition}
+
+Proving CPA security is done by reducing faith in the security of an encryption scheme to faith in the security of the block cipher used in the scheme. This is a tricky process which shows that an adversary which can win the CPA game must also be able to distinguish between the block cipher used in the CPA and a PRF. Therefore, $\AdvCPA{\Pi}{\calA} \leq \AdvPRF{E}{\calB}$, so if the block cipher is secure, the encryption scheme will also be secure. An example of such a reduction is given below (its somewhat convulated but interesting if you want to read through it).
+
+\begin{theorem}
+	Let $E:\bits^n\times\bits^\ell\to\bits^\ell$ be a block cipher. 
+	Define a randomized encryption encryption scheme 
+	$\Pi=(\Enc,\Dec)$ with key-space $\bits^n$, message-
+	and randomness-spaces $\msgs=\rands=\bits^\ell$, and ciphertext-space
+	$\ctxts=\bits^\ell\times\bits^\ell$ by
+	\[
+	\Enc(k,m,r)=(r,E(k,r)\oplus m)
+	\]
+	and $\Dec(k,(r,c)) = E(k,r)\oplus c$. Then for every $\calA$ there
+	exists a $\calB$, running in about the same time as $\calA$, such
+	that
+	\[
+	\AdvCPA{\Pi}{\calA} \leq \AdvPRF{E}{\calB} + \Col(2^\ell,q),
+	\]
+	where $q$ is the number queries issued by $\calA$.
+\end{theorem}
+\begin{proof}
+	We construct the needed adversary $\calB$, which has access to an oracle
+	$\calO$ that is either $E$ with a random key, or a random function $f$.
+	The high-level idea is similar to the reduction to PRG security for
+	one-time CPA, in that $\calB$ will need to ``simulate'' the CPA game for
+	$\calA$. The main differences for the simulation are that $\calB$ has an
+	oracle instead of an input, and the scheme $\Pi$ under consideration is
+	randomized rather than deterministic. The similarity is that we want
+	$\calB$, when connected to the oracle $E(\bK,\cdot)$, to simulate
+	\emph{exactly} $\ExptCPA_{\Pi}(\calA)$, while if the oracle is
+	$\bof(\cdot)$ then we want to simulate a game that $\calA$ can't win
+	too often.
+	
+	Our $\calB$ has access to an oracle $\calO(\cdot)$ mapping $\bits^\ell$ to
+	$\bits^\ell$; It is trying to determine if $\calO(\cdot)=E(\bK,\cdot)$
+	or $\calO(\cdot)=\bof(\cdot)$.
+	
+	The adversary $\calB^\calO$
+	picks a bit $b$ and runs $\calA$. 
+	When $\calA$ queries $\LR_{k,b}(m_0,m_1)$,
+	$\calB$ picks $r\in\bits^\ell$ and returns
+	\[
+	(r, \calO(r)\oplus m_B).
+	\]
+	Eventually when $\calA$ halts with bit $\hat{b}$, if $\hat{b}=b$ then
+	$\calB$ outputs $1$, and otherwise it outputs $0$. This completes
+	the description of $\calB$.
+	
+	We first claim that 
+	\[
+	\Pr[\calB^{E(k,\cdot)}=1] = \Pr[\ExptCPA_{\Pi}(\calA)=1],
+	\]
+	because in this case $\calB$ exactly simulates the experiment
+	for $\calA$. That is, every oracle query is processed \emph{exactly}
+	as in $\ExptCPA_{\Pi}(\calA)$ (and in particular a random key and bit are
+	chosen, and each query uses a uniform and independent $r$ in addition to
+	following the algorithm). Finally the output bit of $\calB$ is determined
+	in exactly the same way.
+	
+	We next claim that
+	\[
+	\Pr[\calB^{f(\cdot)}=1] = \frac{1}{2} - \Col(2^\ell,q)
+	\]
+	where $q$ is the number of oracle queries issued by $\calA$.  Intuitively,
+	with this oracle, $\calB$ is using a ``fresh one-time pad'' to mask every
+	query response \emph{as long the $r$ does not repeat}. To formalize
+	this a little bit,  let $R$ be the event that $\calB$ chooses the
+	same value of $r$ in two different queries. Then $\Pr[R] = \Col(2^\ell,q)$.
+	Writing $\bar{R}$ for ``not $R$'' and using the law of total probability,
+	\begin{align*}
+	\Pr[\calB^{f(\cdot)}=1] 
+	& = \Pr[\calB^{f(\cdot)}=1|R]\Pr[R] 
+	+ \Pr[\calB^{f(\cdot)}=1|\bar{R}]\Pr[\bar{R}]  \\
+	& \leq \Pr[R] 
+	+ \Pr[\calB^{f(\cdot)}=1|\bar{R}] \\
+	& \leq \Col(2^\ell,q) + \frac{1}{2}. 
+	\end{align*}
+	The first inequality follows because we just omit some factors which are
+	both probabilities and thus at most $1$. In the second inequality,
+	we use $\Pr[R]=\Col(2^\ell,q)$ for the first part. To complete this
+	we need to justify
+	\begin{align*}
+	\Pr[\calB^{\bof(\cdot)}=1|\bar{R}] = \frac{1}{2}. 
+	\end{align*}
+	Actually doing this completely rigorously is tricky. The key observation
+	is that, if $R$ does not happen, that means all of queries are processed
+	with unique values of $r$. Call them $r_1,\ldots,r_q$. Then the $i$-th
+	query is answered with
+	\[
+	(r_i, \bof(r_i)\oplus m_b).
+	\]
+	But, conditioned on $R$ not happening,
+	$\bof(r_1),\bof(r_2),\ldots,\bof(r_q)$ are all uniform and independent
+	random variables on $\bits^\ell$. Thus each query completely masks out
+	the message $m_b$, and hence are independent of $b$. Since every query
+	response is independent of $b$, the adversary $\calA$ produces an output
+	independent of $b$. Thus the probability that $\bhat=b$ is $1/2$, and
+	this is the probability that $\calB$ outputs $1$.
+	
+	Finally, the rest is calculation:
+	\begin{align*}
+	\AdvPRF{E}{\calB} 
+	& = |\Pr[\calB^{E(\bK,\cdot)}=1] - \Pr[\calB^{\bof(\cdot)}=1]| \\
+	& \geq  \Pr[\calB^{E(\bK,\cdot)}=1] - \Pr[\calB^{\bof(\cdot)}=1] \\
+	& =  \Pr[\ExptCPA_{\Pi}(\calA)=1] - \Pr[\calB^{\bof(\cdot)}=1] \\
+	& \geq  \Pr[\ExptCPA_{\Pi}(\calA)=1] - \frac{1}{2} - \Col(2^\ell,q).
+	\end{align*}
+	The proof is completed by rearranging the final inequality.
+\end{proof}
 	
 	\subsection{Tweakable Block Ciphers}
+	
+	Tweakable block ciphers are block ciphers that take three parameter, $\keys$, $\msgs$, and $\tau$ where $\tau$ is a tweak. Instead of the block cipher being a single pseudo-random permutation, a tweakable blockcipher is $2^{|\tau|}$ pseudo-random permutation ($|\tau|$ is the number of bits in $\tau$). I haven't studied these much, but AES-XTS, which is normally used for disk encryption is tweakable block cipher, so we should get to understand them better.
 	
 	\section{Definition of Stream Ciphers}
 	
