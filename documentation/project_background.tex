@@ -424,6 +424,50 @@ Proving CPA security is done by reducing faith in the security of an encryption 
 	
 	\section{Definition of Stream Ciphers}
 	
+	Stream ciphers are the other type of algorithm commonly used for encryption. Instead of using shared secret key for a pseudorandom permutation like in block ciphers, they use a shared secret key to generate a pseudorandom bitstring of any length and then take the exclusive-or $\xor$ of that string with the message. Taking the exclusive or a random bitstring with the message is called a one-time-pad.
+	
+	Functions $G$ for stretching keys will be called \emph{pseudorandom generators}
+	of \emph{stream ciphers} (the two names mean the same thing for us; The applied
+	community often uses ``stream cipher'' while the theoretical community
+	typically uses ``pseudorandom generators'').
+	
+	We will use $G$ to build a cipher as follows:
+	\begin{definition}
+		Let $n,\ell$ be positive integers, and let
+		$G:\bits^n\to\bits^\ell$ be a function. Define the
+		\emph{$G$-pseudo-one-time-pad cipher}
+		\[
+		\otp_G:\bits^n\times\bits^\ell\to\bits^\ell
+		\]
+		defined by
+		\[
+		\otp_G(k,m) = G(k)\oplus m.
+		\]
+	\end{definition}
+	
+	Let us first give a definition to measure how effective a statistical test
+	(denoted $\calD$ below, for ``distinguisher'') is against a pseudorandom
+	generator. Essentially, the test is whether an adversary can tell the difference between the pseudo-random generator output and a uniformly random bitstring of equal length.
+	\begin{definition}
+		Let $G:\bits^n\to\bits^\ell$ and $\calD:\bits^\ell \to \bits$ be functions
+		and let $\bK$ be uniform on $\bits^n$ and $\bU$ be uniform on $\bits^\ell$.
+		Then we define the \emph{(pseudorandom generator) distinguishing advantage
+			of $\calD$ against $G$} to be
+		\[
+		\AdvPRG{G}{\calD} =
+		\left|\Pr[\calD(G(\bK))=1]-\Pr[\calD(\bU)=1]\right|.
+		\]
+	\end{definition}
+	The definition is useful because, for a specific $G$ and any test $\calD$, it
+	assigns a number between $0$ and $1$ (the higher the better $\calD$ is).
+	Thus we can compare distinguishers, and speak of how well $G$ passes
+	statistical tests.
+	
+	A weakness to stream ciphers is that if the same key is used twice for a pseudorandom generator, the output will be the same. Therefore, if the same key is used twice to encrypt two different messages, $m_1$ and $m_2$, an adversary could compute the exclusive-or of the two ciphertexts to get $m_1 \xor G(k) \xor m_2 \xor G(k) = m_1 \xor m_2$.
+	
+	A solution to this problem is to use stream ciphers which accept a cryptographic nonce, a number which is only used once. A stream cipher with a nonce will generate different pseudo-random strings assuming the nonce changes every time the generator is used.
+	
+	Like AES is the standard for block ciphers, ChaCha20 is the standard for stream ciphers, and we can fairly safely assume that is has low prg advantage so long as nonces are not reused.  
 	
 	\section{Application to Disk Encryption}
 
