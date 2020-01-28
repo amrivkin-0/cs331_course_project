@@ -5,7 +5,7 @@
     Rewrite-Resistant Block Ciphers for Full Disk Encryption
 }
 \date{January 28th, 2020}
-\author{Adam Rivkin, Tiago Royer, Aaron Zheng}
+\author{Adam Rivkin, Tiago Royer, Aaron Zhang}
 \maketitle
 
 \begin{abstract}
@@ -19,5 +19,16 @@
     so that it is not vulnerable to this sort of attack.
 \end{abstract}
 
+\section*{Related work}
+
+Our project is primarily based on StrongBox [], the first high-performance drive encryption scheme using a stream cipher.  Conventionally, stream ciphers have not been used for drive encryption because they need to be rekeyed when writing to the same sector twice.  Rekeying is expensive because it requires reencrypting data and updating metadata, and frequent rekeying will offset the performance benefits of using stream ciphers over block ciphers.  The main challenge of StrongBox is to store metadata that allows the system to determine when rekeying needs to happen, in a way that rekeying is both efficient and secure.
+
+StrongBox achieves both efficiency and security by using recent developments in SSD hardware: efficiency makes use of flash translation layers (FTL), while security relies on replay-protected memory blocks (RPMB).  The FTL is designed for wear leveling and distributes writes among the disk sectors.  As a result, fewer sectors are overwritten compared to filesystems like Ext4.  We emphasize that the efficiency of StrongBox relies on having a filesystem that supports FTL or operates like a log-structured filesystem to reduce the number of overwritten disk sectors.  The authors of StrongBox tested their implementation on the F2FS filesystem, which is a modern log-structured filesystem.  Compared to the standard AES-XTS on Ext4, encrypted reads on StrongBox were about twice as fast on average.  Encrypted writes performed at about the same speed or slightly better on average, despite the need for occasional rekeying.  On the other hand, when the authors tested StrongBox on Ext4, it was significantly slower than AES-XTS.
+
+Now we discuss how StrongBox tracks the metadata securely.  At a high level, the metadata keeps track of information about which sectors have been written to, so the system can determine whether a write operation would overwrite a sector and rekey accordingly. (The structure of the metadata will be discussed in more detail later.) But rekeying each sector when the metadata indicates an overwrite is not sufficient for confidentiality.  This is because if the attacker has access to the drive, it is possible that they can roll back the drive to a previous state.  This includes rolling back the contents of the metadata, so that now when an overwrite occurs, StrongBox might not recognize that a sector is being overwritten.  This would break the security of the stream cipher.  StrongBox addresses this problem by using replay-protected memory with a monotonic counter.  This is a counter that can be incremented, but cannot be rolled back to a previous value.  StrongBox uses this counter to represent the version number of the encrypted data: every time a write occurs, the counter is incremented.  The metadata also contains a copy of the counter value on the disk.  Now when a rollback occurs, the value of the counter on the disk will be inconsistent with the value of the counter in replay-protected memory, since the latter cannot be rolled back.  StrongBox detects this and prevents the filesystem from mounting.
+
+Elaborating on the design of StrongBox, the drive to be encrypted has some space reserved for StrongBox metadata.  The rest of the drive is split into logical units called nuggets, which are subdivided into flakes, each of which contains multiple disk sectors.  The metadata contains a dirty bit for each flake, and stores a key for each nugget.  When a flake is written to, the dirty bit is set.  When another write occurs to that flake, the system performs rekeying.  Rekeying occurs for the whole nugget containing the flake: the whole nugget is reencrypted using a new key, and the metadata for the nugget is updated with the new key.  The nugget/flake size involves a tradeoff between rekeying overhead and metadata size: if nuggets and flakes are smaller, rekeying is less frequent and requires less reencryption.  On the other hand, smaller nuggets and flakes means that the number of nuggets or flakes is higher, which results in the metadata occupying more space.  The StrongBox authors choose an implementation where the overall size of the metadata is less than $0.01\%$ of the drive space.
+
+Besides StrongBox, we note that an earlier application of stream ciphers, STES, was designed for USB drives and SD cards rather than drives [].  Like StrongBox, STES takes advantage of the hardware and use cases it is designed for.  Thus, STES takes a fairly different approach from StrongBox, and our project will mainly focus on extending the ideas in StrongBox.
 
 \end{document}
