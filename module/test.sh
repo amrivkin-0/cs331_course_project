@@ -13,6 +13,7 @@ sudo dmsetup create wintercept-dev --table "0 20000 wintercept $loop_device_name
 
 echo Giving ourselves read/write permission...
 sudo chmod a+r /dev/mapper/wintercept-dev
+sudo chmod a+w /dev/mapper/wintercept-dev
 
 echo Testing that the module returns only zeros...
 cmp <(dd if=/dev/zero bs=512 count=20000 status=none) \
