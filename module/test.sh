@@ -7,7 +7,9 @@ echo Installing kernel module...
 sudo insmod write-interceptor.ko
 
 echo Creating virtual mapping...
-sudo dmsetup create wintercept-dev --table '0 20000 wintercept'
+dd if=/dev/zero of=device_store bs=512 count=20000 status=none
+loop_device_name=$(sudo losetup --find --show device_store)
+sudo dmsetup create wintercept-dev --table "0 20000 wintercept $loop_device_name"
 
 echo Giving ourselves read/write permission...
 sudo chmod a+r /dev/mapper/wintercept-dev
@@ -23,6 +25,9 @@ fi
 
 echo Removing the virtual mapping...
 sudo dmsetup remove wintercept-dev
+sudo losetup -d "$loop_device_name"
 
 echo Removing kernel module...
 sudo rmmod write_interceptor
+
+echo You may erase the file device_store now.

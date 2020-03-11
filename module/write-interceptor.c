@@ -7,18 +7,62 @@ MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Tiago Royer");
 MODULE_DESCRIPTION("Data collection tool");
 
+/* This device mapper will only support reading/writing the entire block device.
+ * So, the only context structure needed is a pointer to the underlying device.
+ */
+typedef struct dm_dev *wi_context;
+wi_context *new_wi_context() {
+    return kmalloc(sizeof(wi_context), GFP_KERNEL);
+}
+void delete_wi_context(wi_context *context) {
+    kfree(context);
+}
+dm_dev *wi_context_dev(wi_context *context) {
+    return *context;
+}
+
 static int wi_constructor(struct dm_target *target, unsigned int argc, char **argv) {
     int i;
+    int ret = 1;
+    wi_context *context = NULL;
+
     printk(KERN_INFO "wi_constructor(%p, %i, {\n", target, argc);
     for(i = 0; i < argc; i++) {
         printk(KERN_INFO "    \"%s\",\n", argv[i]);
     }
     printk(KERN_INFO "});\n");
+
+    if(argc == 0) {
+        target->error = "Missing device argument";
+        goto error;
+    }
+
+    wi_context *context = new_wi_context();
+    if(!context) {
+        target->error = "Not enough memory when allocating wi_context";
+        goto error;
+    }
+
+    ret = dm_get_device(target, argv[0],
+                dm_table_get_mode(target->table), wi_context_dev(context)
+            );
+    if(ret) {
+        target->error = "Error acquiring underlying block device";
+        goto error;
+    }
+
+    target->private = context;
     return 0;
+
+error: // TODO: Error handling was not thoroughly tested
+    delete_wi_context(context);
+    return ret;
 }
 
 static void wi_destructor(struct dm_target *ti) {
     printk(KERN_INFO "wi_destructor(%p);\n", ti);
+    dm_put_device(ti, wi_context_dev(ti->private));
+    delete_wi_context(ti->private);
 }
 
 static int wi_map_function(struct dm_target *ti, struct bio *bio) {
