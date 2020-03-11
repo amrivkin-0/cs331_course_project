@@ -85,11 +85,12 @@ static int wi_map_function(struct dm_target *ti, struct bio *bio) {
             if(data) {
                 int i;
                 for(i = 0; i < bv.bv_len; i++) {
-                    sprintf(data_bytes + 3*i, "%0x ", data[i]);
+                    sprintf(data_bytes + 3*i, "%02x ", data[i + bv.bv_offset]);
                 }
                 data_bytes[3 * bv.bv_len] = '\0'; // Just in case bv.bv_len == 0
             }
-            printk(KERN_INFO " write(%u) %s\n", bv.bv_len, data_bytes? data_bytes : "kmalloc failed");
+            printk(KERN_INFO " write(%u, %u) %s\n",
+                    bv.bv_len, bv.bv_offset, data_bytes? data_bytes : "kmalloc failed");
             kfree(data_bytes);
 
             bvec_kunmap_irq(data, &flags);
