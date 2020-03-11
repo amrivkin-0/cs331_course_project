@@ -27,6 +27,29 @@ static int wi_map_function(struct dm_target *ti, struct bio *bio) {
     if(bio_op(bio) == REQ_OP_READ) {
         zero_fill_bio(bio);
     }
+    if(bio_op(bio) == REQ_OP_WRITE) {
+        unsigned long flags;
+        struct bio_vec bv;
+        struct bvec_iter iter;
+
+        bio_for_each_segment(bv, bio, iter) {
+            char *data = bvec_kmap_irq(&bv, &flags);
+
+            char *data_bytes = kmalloc(bv.bv_len * 3 + 1, GFP_KERNEL);
+            if(data) {
+                int i;
+                for(i = 0; i < bv.bv_len; i++) {
+                    sprintf(data_bytes + 3*i, "%0x ", data[i]);
+                }
+                data_bytes[3 * bv.bv_len] = '\0'; // Just in case bv.bv_len == 0
+            }
+            printk(KERN_INFO " write(%u) %s\n", bv.bv_len, data_bytes? data_bytes : "kmalloc failed");
+            kfree(data_bytes);
+
+            bvec_kunmap_irq(data, &flags);
+        }
+        // For now, silently discard the write operation
+    }
     bio_endio(bio);
     return DM_MAPIO_SUBMITTED;
 }
