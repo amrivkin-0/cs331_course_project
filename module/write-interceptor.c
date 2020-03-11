@@ -10,48 +10,47 @@ MODULE_DESCRIPTION("Data collection tool");
 /* This device mapper will only support reading/writing the entire block device.
  * So, the only context structure needed is a pointer to the underlying device.
  */
-typedef struct dm_dev *wi_context;
-wi_context *new_wi_context() {
-    return kmalloc(sizeof(wi_context), GFP_KERNEL);
+struct wi_context {
+    struct dm_dev *dev;
+};
+struct wi_context *new_wi_context(void) {
+    return kmalloc(sizeof(struct wi_context), GFP_KERNEL);
 }
-void delete_wi_context(wi_context *context) {
+void delete_wi_context(struct wi_context *context) {
     kfree(context);
 }
-dm_dev *wi_context_dev(wi_context *context) {
-    return *context;
-}
 
-static int wi_constructor(struct dm_target *target, unsigned int argc, char **argv) {
+static int wi_constructor(struct dm_target *ti, unsigned int argc, char **argv) {
     int i;
     int ret = 1;
-    wi_context *context = NULL;
+    struct wi_context *context = NULL;
 
-    printk(KERN_INFO "wi_constructor(%p, %i, {\n", target, argc);
+    printk(KERN_INFO "wi_constructor(%p, %i, {\n", ti, argc);
     for(i = 0; i < argc; i++) {
         printk(KERN_INFO "    \"%s\",\n", argv[i]);
     }
     printk(KERN_INFO "});\n");
 
     if(argc == 0) {
-        target->error = "Missing device argument";
+        ti->error = "Missing device argument";
         goto error;
     }
 
-    wi_context *context = new_wi_context();
+    context = new_wi_context();
     if(!context) {
-        target->error = "Not enough memory when allocating wi_context";
+        ti->error = "Not enough memory when allocating wi_context";
         goto error;
     }
 
-    ret = dm_get_device(target, argv[0],
-                dm_table_get_mode(target->table), wi_context_dev(context)
+    ret = dm_get_device(ti, argv[0],
+                dm_table_get_mode(ti->table), &context->dev
             );
     if(ret) {
-        target->error = "Error acquiring underlying block device";
+        ti->error = "Error acquiring underlying block device";
         goto error;
     }
 
-    target->private = context;
+    ti->private = context;
     return 0;
 
 error: // TODO: Error handling was not thoroughly tested
@@ -60,18 +59,21 @@ error: // TODO: Error handling was not thoroughly tested
 }
 
 static void wi_destructor(struct dm_target *ti) {
+    struct wi_context *context;
     printk(KERN_INFO "wi_destructor(%p);\n", ti);
-    dm_put_device(ti, wi_context_dev(ti->private));
-    delete_wi_context(ti->private);
+    context = ti->private;
+    dm_put_device(ti, context->dev);
+    delete_wi_context(context);
 }
 
 static int wi_map_function(struct dm_target *ti, struct bio *bio) {
+    struct wi_context *context;
     printk(KERN_INFO "wi_map_function(%p, %p);\n", ti, bio);
     printk(KERN_INFO "bio_op(%p) -> %x\n", bio, bio_op(bio));
-    if(bio_op(bio) == REQ_OP_READ) {
-        zero_fill_bio(bio);
-    }
+
+
     if(bio_op(bio) == REQ_OP_WRITE) {
+        // Inspect the data that's being written
         unsigned long flags;
         struct bio_vec bv;
         struct bvec_iter iter;
@@ -92,10 +94,14 @@ static int wi_map_function(struct dm_target *ti, struct bio *bio) {
 
             bvec_kunmap_irq(data, &flags);
         }
-        // For now, silently discard the write operation
     }
-    bio_endio(bio);
-    return DM_MAPIO_SUBMITTED;
+
+    // Redirect the block IO request to the underlying device
+    context = ti->private;
+    bio_set_dev(bio, context->dev->bdev);
+    bio->bi_iter.bi_sector = 0 /* start */ + dm_target_offset(ti, bio->bi_iter.bi_sector);
+
+    return DM_MAPIO_REMAPPED;
 }
 
 static struct target_type write_interceptor_target = {
