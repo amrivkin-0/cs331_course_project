@@ -1,5 +1,6 @@
 #include <linux/bio.h>
 #include <linux/device-mapper.h>
+#include <linux/fs.h>
 #include <linux/init.h>
 #include <linux/module.h>
 
@@ -8,10 +9,13 @@ MODULE_AUTHOR("Tiago Royer");
 MODULE_DESCRIPTION("Data collection tool");
 
 /* This device mapper will only support reading/writing the entire block device.
- * So, the only context structure needed is a pointer to the underlying device.
+ * So, the only context structure needed is a pointer to the underlying device,
+ * and the file* used for output.
  */
 struct wi_context {
     struct dm_dev *dev;
+    struct file *output;
+    loff_t output_position;
 };
 struct wi_context *new_wi_context(void) {
     return kmalloc(sizeof(struct wi_context), GFP_KERNEL);
@@ -20,10 +24,39 @@ void delete_wi_context(struct wi_context *context) {
     kfree(context);
 }
 
+void write_sector_trace(struct wi_context *context, const char *data, sector_t sector) {
+    char *str = kmalloc(128*2+6+1+1, GFP_KERNEL);
+    /* 128*2 for each byte in hex, + 6 for the offset, +1 for the '\n', +1 for the '\0'.
+     */
+    ssize_t written_bytes;
+    bool any_nonzero = false;
+    int i;
+
+    if(!str) {
+        printk(KERN_INFO "Not enough memory for write_sector_trace\n");
+        return;
+    }
+
+    sprintf(str, "%05lu ", sector);
+    for(i = 0; i < 128; i++) {
+        sprintf(str+2*i+6, "%02x\n", data[i]);
+        if(data[i]) any_nonzero = true;
+    }
+    if(any_nonzero) {
+        written_bytes = kernel_write(context->output, str, 128*2+7, &context->output_position);
+    }
+
+    kfree(str);
+}
+
+/* argv[0] == underlying target
+ * argv[1] == output
+ */
 static int wi_constructor(struct dm_target *ti, unsigned int argc, char **argv) {
     int i;
     int ret = 1;
     struct wi_context *context = NULL;
+    struct file *output = NULL;
 
     printk(KERN_INFO "wi_constructor(%p, %i, {\n", ti, argc);
     for(i = 0; i < argc; i++) {
@@ -31,8 +64,8 @@ static int wi_constructor(struct dm_target *ti, unsigned int argc, char **argv) 
     }
     printk(KERN_INFO "});\n");
 
-    if(argc == 0) {
-        ti->error = "Missing device argument";
+    if(argc <= 1) {
+        ti->error = "Wrong number of parameters";
         goto error;
     }
 
@@ -50,10 +83,19 @@ static int wi_constructor(struct dm_target *ti, unsigned int argc, char **argv) 
         goto error;
     }
 
+    output = filp_open(argv[1], FMODE_WRITE, 0);
+    if(!output) {
+        ti->error = "Error opening output file";
+        goto error;
+    }
+
+    context->output = output;
+    context->output_position = 0;
     ti->private = context;
     return 0;
 
 error: // TODO: Error handling was not thoroughly tested
+    filp_close(output, NULL);
     delete_wi_context(context);
     return ret;
 }
@@ -71,7 +113,7 @@ static int wi_map_function(struct dm_target *ti, struct bio *bio) {
     printk(KERN_INFO "wi_map_function(%p, %p);\n", ti, bio);
     printk(KERN_INFO "bio_op(%p) -> %x\n", bio, bio_op(bio));
 
-
+    context = ti->private;
     if(bio_op(bio) == REQ_OP_WRITE) {
         // Inspect the data that's being written
         unsigned long flags;
@@ -80,26 +122,17 @@ static int wi_map_function(struct dm_target *ti, struct bio *bio) {
 
         bio_for_each_segment(bv, bio, iter) {
             char *data = bvec_kmap_irq(&bv, &flags);
-
-            char *data_bytes = kmalloc(bv.bv_len * 3 + 1, GFP_KERNEL);
-            if(data) {
-                int i;
-                for(i = 0; i < bv.bv_len; i++) {
-                    sprintf(data_bytes + 3*i, "%02x ", data[i + bv.bv_offset]);
-                }
-                data_bytes[3 * bv.bv_len] = '\0'; // Just in case bv.bv_len == 0
+            int i;
+            printk(KERN_INFO "wi_map: write [len=%u, offset=%u, sector=%lu]\n",
+                    bv.bv_len, bv.bv_offset, iter.bi_sector);
+            for(i = 0; i < bv.bv_len/128; i++) {
+                write_sector_trace(context, data + i*128, iter.bi_sector + i);
             }
-            printk(KERN_INFO " write [len=%u, offset=%u, sector=%lu] %s\n",
-                    bv.bv_len, bv.bv_offset, iter.bi_sector,
-                    data_bytes? data_bytes : "kmalloc failed");
-            kfree(data_bytes);
-
             bvec_kunmap_irq(data, &flags);
         }
     }
 
     // Redirect the block IO request to the underlying device
-    context = ti->private;
     bio_set_dev(bio, context->dev->bdev);
     bio->bi_iter.bi_sector = 0 /* start */ + dm_target_offset(ti, bio->bi_iter.bi_sector);
 

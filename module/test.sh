@@ -9,7 +9,8 @@ sudo insmod write-interceptor.ko
 echo Creating virtual mapping...
 dd if=/dev/zero of=device_store bs=512 count=20000 status=none
 loop_device_name=$(sudo losetup --find --show device_store)
-sudo dmsetup create wintercept-dev --table "0 20000 wintercept $loop_device_name"
+echo -n > /tmp/output.txt
+sudo dmsetup create wintercept-dev --table "0 20000 wintercept $loop_device_name /tmp/output.txt"
 
 echo Giving ourselves read/write permission...
 sudo chmod a+r /dev/mapper/wintercept-dev
