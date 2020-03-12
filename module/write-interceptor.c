@@ -8,6 +8,8 @@ MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Tiago Royer");
 MODULE_DESCRIPTION("Data collection tool");
 
+#define SECTOR_SIZE 512
+
 /* This device mapper will only support reading/writing the entire block device.
  * So, the only context structure needed is a pointer to the underlying device,
  * and the file* used for output.
@@ -25,8 +27,8 @@ void delete_wi_context(struct wi_context *context) {
 }
 
 void write_sector_trace(struct wi_context *context, const char *data, sector_t sector) {
-    char *str = kmalloc(128*2+6+1+1, GFP_KERNEL);
-    /* 128*2 for each byte in hex, + 6 for the offset, +1 for the '\n', +1 for the '\0'.
+    char *str = kmalloc(SECTOR_SIZE*2+6+1+1, GFP_KERNEL);
+    /* 512*2 for each byte in hex, + 6 for the offset, +1 for the '\n', +1 for the '\0'.
      */
     ssize_t written_bytes;
     bool any_nonzero = false;
@@ -38,12 +40,12 @@ void write_sector_trace(struct wi_context *context, const char *data, sector_t s
     }
 
     sprintf(str, "%05lu ", sector);
-    for(i = 0; i < 128; i++) {
+    for(i = 0; i < SECTOR_SIZE; i++) {
         sprintf(str+2*i+6, "%02x\n", data[i]);
         if(data[i]) any_nonzero = true;
     }
     if(any_nonzero) {
-        written_bytes = kernel_write(context->output, str, 128*2+7, &context->output_position);
+        written_bytes = kernel_write(context->output, str, SECTOR_SIZE*2+7, &context->output_position);
     }
 
     kfree(str);
@@ -125,8 +127,8 @@ static int wi_map_function(struct dm_target *ti, struct bio *bio) {
             int i;
             printk(KERN_INFO "wi_map: write [len=%u, offset=%u, sector=%lu]\n",
                     bv.bv_len, bv.bv_offset, iter.bi_sector);
-            for(i = 0; i < bv.bv_len/128; i++) {
-                write_sector_trace(context, data + i*128, iter.bi_sector + i);
+            for(i = 0; i < bv.bv_len/SECTOR_SIZE; i++) {
+                write_sector_trace(context, data + i*SECTOR_SIZE, iter.bi_sector + i);
             }
             bvec_kunmap_irq(data, &flags);
         }
