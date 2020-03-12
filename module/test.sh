@@ -24,6 +24,15 @@ else
     echo Something went wrong...
 fi
 
+echo Writing some data...
+echo SomeData > /dev/mapper/wintercept-dev
+cmp <(dd if=/dev/mapper/wintercept-dev bs=1 count=8 status=none) <(echo -n SomeData)
+if (($? == 0)); then
+    echo The module correctly writes data!
+else
+    echo Something went wrong...
+fi
+
 echo Removing the virtual mapping...
 sudo dmsetup remove wintercept-dev
 sudo losetup -d "$loop_device_name"
