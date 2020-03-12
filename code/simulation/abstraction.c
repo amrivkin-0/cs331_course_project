@@ -16,6 +16,8 @@ FILE *backing_store;
 int nugs_per_mem;
 int keycount_length; // in bytes
 int transaction_length; // in bytes
+int mem_size;
+// EVP_CIPHER cipher = EVP_chacha20(); // EVP_aes_256_ctr, EVP_aes_256_ofb, EVP_aes_256_xts
 
 void init(){
     if (sodium_init() < 0) {
@@ -29,7 +31,7 @@ void init(){
     disk_sim = fopen("disk_sim.bin", "rb+");
     backing_store = fopen("backing_store.bin", "rb+");
     fseek(disk_sim, 0L, SEEK_END);
-    int mem_size = ftell(disk_sim);
+    mem_size = ftell(disk_sim);
     printf("Memory size: %i\n", mem_size);
     nugs_per_mem = (int) mem_size / (flake_size * flakes_per_nug);
     printf("Nuggets in memory: %i\n", nugs_per_mem);
@@ -61,6 +63,135 @@ void printHelp(){
     printf("    largeSeqReads - Large sequential reads\n");
     printf("    largeSeqWrites - Large sequential writes\n");
 }
+
+
+void smallSeqReads(){
+    clock_t t; 
+    t = clock(); 
+    unsigned long startAddr = 0;
+    unsigned long endAddr = 256;
+    for(int i = 0; i < 256; i++){
+        readDiskDecrypt(startAddr, endAddr);
+        startAddr += 256;
+        endAddr += 256;
+    }
+    t = clock() - t; 
+    double time_taken = ((double)t)/CLOCKS_PER_SEC; // in seconds 
+    printf("smallSeqReads took %f seconds to execute \n", time_taken); 
+}
+
+
+void smallSeqWrites(){
+    clock_t t; 
+    t = clock();
+    unsigned long startAddr = 0;
+    unsigned int length = 256;
+    for(int i = 0; i < 256; i++){
+        writeDiskLenEncrypt(startAddr, length);
+        startAddr += 256;
+    }
+    t = clock() - t; 
+    double time_taken = ((double)t)/CLOCKS_PER_SEC; // in seconds 
+    printf("smallSeqWrites took %f seconds to execute \n", time_taken); 
+}
+
+
+void largeSeqReads(){
+    clock_t t; 
+    t = clock(); 
+    unsigned long startAddr = 0;
+    unsigned long endAddr = 40960;
+    for(int i = 0; i < 256; i++){
+        readDiskDecrypt(startAddr, endAddr);
+        startAddr += 40960;
+        endAddr += 40960;
+        startAddr = startAddr % mem_size;
+        endAddr = endAddr % mem_size;
+    }
+    t = clock() - t; 
+    double time_taken = ((double)t)/CLOCKS_PER_SEC; // in seconds 
+    printf("largeSeqReads took %f seconds to execute \n", time_taken); 
+}
+
+
+void largeSeqWrites(){
+    clock_t t; 
+    t = clock();
+    unsigned long startAddr = 0;
+    unsigned int length = 40960;
+    for(int i = 0; i < 256; i++){
+        writeDiskLenEncrypt(startAddr, length);
+        startAddr += 40960;
+        startAddr = startAddr % mem_size;
+    }
+    t = clock() - t; 
+    double time_taken = ((double)t)/CLOCKS_PER_SEC; // in seconds 
+    printf("largeSeqWrites took %f seconds to execute \n", time_taken); 
+}
+
+
+void smallRandReads(){
+    clock_t t; 
+    t = clock();
+    unsigned long startAddr;
+    unsigned long endAddr;
+    for(int i = 0; i < 256; i++){
+        startAddr = rand() % (mem_size - 256);
+        endAddr = startAddr + 256;
+        readDiskDecrypt(startAddr, endAddr);
+    }
+    t = clock() - t; 
+    double time_taken = ((double)t)/CLOCKS_PER_SEC; // in seconds 
+    printf("smallRandReads took %f seconds to execute \n", time_taken); 
+}
+
+
+void smallRandWrites(){
+    clock_t t; 
+    t = clock();
+    unsigned long startAddr;
+    unsigned int length = 256;
+    for(int i = 0; i < 256; i++){
+        startAddr = rand() % (mem_size - 256);
+        writeDiskLenEncrypt(startAddr, length);
+        startAddr += 256;
+    }
+    t = clock() - t; 
+    double time_taken = ((double)t)/CLOCKS_PER_SEC; // in seconds 
+    printf("smallRandWrites took %f seconds to execute \n", time_taken); 
+}
+
+
+void largeRandReads(){
+    clock_t t; 
+    t = clock();
+    unsigned long startAddr;
+    unsigned long endAddr;
+    for(int i = 0; i < 256; i++){
+        startAddr = rand() % (mem_size - 40960);
+        endAddr = startAddr + 40960;
+        readDiskDecrypt(startAddr, endAddr);
+    }
+    t = clock() - t; 
+    double time_taken = ((double)t)/CLOCKS_PER_SEC; // in seconds 
+    printf("smallRandReads took %f seconds to execute \n", time_taken); 
+}
+
+
+void largeRandWrites(){
+    clock_t t; 
+    t = clock();
+    unsigned long startAddr;
+    unsigned int length = 40960;
+    for(int i = 0; i < 256; i++){
+        startAddr = rand() % (mem_size - 40960);
+        writeDiskLenEncrypt(startAddr, length);
+    }
+    t = clock() - t; 
+    double time_taken = ((double)t)/CLOCKS_PER_SEC; // in seconds 
+    printf("smallRandWrites took %f seconds to execute \n", time_taken); 
+}
+
 
 void genKeyNugget(unsigned char* key, int nugget_index)
 {
@@ -96,11 +227,11 @@ void readDiskDecrypt(unsigned long startAddr, unsigned long endAddr){
     unsigned char *nonce = calloc(1, 8);
     fread(nonce, 8, 1, backing_store);
     
-    printf("Nonce: %s\n", nonce);
-    for(unsigned int i = 0; i < 8; i++) {
-        printf("%02X", *(nonce + i));
-    }
-    printf("\n");
+    // printf("Nonce: %s\n", nonce);
+    // for(unsigned int i = 0; i < 8; i++) {
+        // printf("%02X", *(nonce + i));
+    // }
+    // printf("\n");
     
     fseek(disk_sim, startAddr, SEEK_SET);
     unsigned char *buffer = calloc(length, sizeof(unsigned char));
@@ -108,23 +239,23 @@ void readDiskDecrypt(unsigned long startAddr, unsigned long endAddr){
     unsigned char* key = calloc(1, KEY_LEN);
     
     genKeyNugget(key, nugget_num);
-    printf("Key: %s\n", key);
+    // printf("Key: %s\n", key);
     
-    unsigned char decryptedtext[1024];
+    unsigned char* decryptedtext = calloc(length, sizeof(unsigned char));
     
     int decryptedtext_len = decrypt(buffer, length, key, nonce,
                                 decryptedtext);
                                 
     /* Add a NULL terminator. We are expecting printable text */
-    decryptedtext[decryptedtext_len] = '\0';
+    // decryptedtext[decryptedtext_len] = '\0';
 
     /* Show the decrypted text */
-    printf("Decrypted text is:\n");
-    printf("%s\n", decryptedtext);
+    // printf("Decrypted text is:\n");
+    // printf("%s\n", decryptedtext);
     
-    free(key);
-    free(buffer);
-    free(nonce);
+    // free(key);
+    // free(buffer);
+    // free(nonce);
     return;
 }
 
@@ -280,7 +411,7 @@ void writeDiskLenEncrypt(unsigned long startAddr, unsigned int length){
         *(data + i) = (uint8_t) rand();
     }
     writeDiskEncrypt(startAddr, data, length);
-    free(data);
+    // free(data);
 }
 
 void writeDisk(unsigned long startAddr, uint8_t *data, unsigned int length){
@@ -316,7 +447,7 @@ void writeDiskEncrypt(unsigned long startAddr, uint8_t *data, unsigned int lengt
     fread(flag, 1, 1, backing_store);
     
     if(strcmp(flag, "1") == 0){
-        printf("Need to rekey\n");
+        // printf("Need to rekey\n");
         rekey(nugget_num);
     }
     
@@ -326,17 +457,17 @@ void writeDiskEncrypt(unsigned long startAddr, uint8_t *data, unsigned int lengt
     unsigned char *nonce = calloc(1, 8);
     fread(nonce, 8, 1, backing_store);
     
-    printf("Nonce: %s\n", nonce);
-    for(unsigned int i = 0; i < 8; i++) {
-        printf("%02X", *(nonce + i));
-    }
-    printf("\n");
+    // printf("Nonce: %s\n", nonce);
+    // for(unsigned int i = 0; i < 8; i++) {
+    //     printf("%02X", *(nonce + i));
+    // }
+    // printf("\n");
     
     unsigned char* key = calloc(1, KEY_LEN);
     genKeyNugget(key, nugget_num);
-    printf("Key: %s\n", key);
+    // printf("Key: %s\n", key);
     
-    unsigned char encryptedtext[1024];
+    unsigned char* encryptedtext = calloc(length, sizeof(unsigned char));
     
     int encryptedtext_len = encrypt(data, length, key, nonce,
                                 encryptedtext);
@@ -349,8 +480,8 @@ void writeDiskEncrypt(unsigned long startAddr, uint8_t *data, unsigned int lengt
     fseek(backing_store, keycount_length + (flake_num + (nugget_num * flakes_per_nug)), SEEK_SET);
     fputc('1', backing_store);
     
-    free(key);
-    free(nonce);
+    // free(key);
+    // free(nonce);
     return;
 }
 
@@ -526,6 +657,30 @@ int main() {
             }
             writeDiskEncrypt(startAddr, data, length);
             free(data);
+        }
+        if(strcmp("smallSeqReads", token) == 0){
+            smallSeqReads();
+        }
+        if(strcmp("smallSeqWrites", token) == 0){
+            smallSeqWrites();
+        }
+        if(strcmp("smallRandReads", token) == 0){
+            smallRandReads();
+        }
+        if(strcmp("smallRandWrites", token) == 0){
+            smallRandWrites();
+        }
+        if(strcmp("largeSeqReads", token) == 0){
+            largeSeqReads();
+        }
+        if(strcmp("largeSeqWrites", token) == 0){
+            largeSeqWrites();
+        }
+        if(strcmp("largeRandReads", token) == 0){
+            largeRandReads();
+        }
+        if(strcmp("largeRandWrites", token) == 0){
+            largeRandWrites();
         }
         if(strcmp("quit", token) == 0){
             running = false;

@@ -5,6 +5,10 @@
 #define PASSWORD "Master Secret Password"
 #define KEY_LEN crypto_box_SEEDBYTES
 
+void smallSeqReads();
+
+void smallSeqWrites();
+
 void rekey(int nugget_num);
 
 void genKeyNugget(unsigned char* key, int nugget_index);
