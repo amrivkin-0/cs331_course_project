@@ -1,5 +1,11 @@
 #!/bin/bash
 # Small script to test the write-interceptor module.
+fs_maker="$1"
+
+if [ "$fs_maker" = "" ]; then
+    echo "Usage: ./test.sh mkfs.???"
+    exit 1
+fi
 
 make
 
@@ -16,23 +22,8 @@ echo Giving ourselves read/write permission...
 sudo chmod a+r /dev/mapper/wintercept-dev
 sudo chmod a+w /dev/mapper/wintercept-dev
 
-echo Testing that the module returns only zeros...
-cmp <(dd if=/dev/zero bs=512 count=20000 status=none) \
-    <(dd if=/dev/mapper/wintercept-dev bs=512 count=20000 status=none)
-if (($? == 0)); then
-    echo The module correctly returns only zeros!
-else
-    echo Something went wrong...
-fi
-
-echo Writing some data...
-echo SomeData > /dev/mapper/wintercept-dev
-cmp <(dd if=/dev/mapper/wintercept-dev bs=1 count=8 status=none) <(echo -n SomeData)
-if (($? == 0)); then
-    echo The module correctly writes data!
-else
-    echo Something went wrong...
-fi
+echo Running stress test...
+./write-test.sh /dev/mapper/wintercept-dev $fs_maker
 
 echo Removing the virtual mapping...
 sudo dmsetup remove wintercept-dev
