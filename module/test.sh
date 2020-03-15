@@ -23,7 +23,12 @@ sudo chmod a+r /dev/mapper/wintercept-dev
 sudo chmod a+w /dev/mapper/wintercept-dev
 
 echo Running stress test...
-./write-test.sh /dev/mapper/wintercept-dev $fs_maker
+./write-test.sh /dev/mapper/wintercept-dev "$fs_maker"
+
+total_reads=$(wc -l < /tmp/output.txt)
+unique_reads=$(sort /tmp/output.txt -u | wc -l)
+echo Total reads: $total_reads / Duplicates: $((total_reads - unique_reads))
+echo "$fs_maker" $total_reads $((total_reads - unique_reads)) >> log.txt
 
 echo Removing the virtual mapping...
 sudo dmsetup remove wintercept-dev
