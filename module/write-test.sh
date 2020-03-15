@@ -12,6 +12,7 @@ sudo chown "$(whoami):$(whoami)" device
 for i in {0..9}; do
     mkdir device/$i
 done
+sync
 
 echo -n "WC after mkdir:        "
 wc /tmp/output.txt -l
@@ -21,6 +22,7 @@ for i in {0..9}; do
         dd if=/dev/urandom of=device/$i/$j bs=512 count=32 status=none
     done
 done
+sync
 
 echo -n "WC after dd:           "
 wc /tmp/output.txt -l
@@ -31,6 +33,7 @@ for count in {0..99}; do
     sector=$((RANDOM%1024))
     dd if=/dev/urandom of=device/$i/$j bs=16 count=1 seek=$sector conv=notrunc status=none
 done
+sync
 
 echo -n "WC after random dd:    "
 wc /tmp/output.txt -l
