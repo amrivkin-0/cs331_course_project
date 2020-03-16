@@ -5,6 +5,8 @@
 #include <linux/module.h>
 
 MODULE_LICENSE("GPL");
+MODULE_AUTHOR("Aaron Zhang");
+MODULE_AUTHOR("Adam Rivkin");
 MODULE_AUTHOR("Tiago Royer");
 MODULE_DESCRIPTION("Data collection tool");
 
